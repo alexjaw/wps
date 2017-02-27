@@ -2,7 +2,13 @@
 import os
 import subprocess
 import time
-import bap_com
+
+class fake_fp:
+    def show(self, msg):
+        print('fake_fp: ' + msg)
+
+    def reset(self):
+        self.show('done')
 
 def display(msg=None, reset=False):
     fp.show(msg)
@@ -50,7 +56,22 @@ def shell_cmd(cmd):
         #print out
         return out
 
+def _scan():
+    cmd = ['wpa_cli', 'scan']
+    resp = shell_cmd(cmd)
+    if resp == -1:
+        return -1
+    else:
+        return 0
+
 def scan():
+    # First scan
+    # Then get results
+    resp = _scan()
+    if resp == -1:
+        return -1
+
+    # Ok, get results
     cmd = ['wpa_cli', 'scan_results']
     resp = shell_cmd(cmd)
     if resp == -1:
@@ -68,26 +89,47 @@ def wps_connect(ssid):
         print repr(resp)
         return 0
 
+def halt():
+    if not is_fake_fp:
+        os.system('halt')
+
+def reboot():
+    if not is_fake_fp:
+        os.system('reboot')
+
 if __name__ == "__main__":
-    fp = bap_com.FrontPanel()
+    curr_dir = os.getcwd()
+    fname = 'scan_results.txt'
+    of = os.path.join(curr_dir, fname)
+    try:
+        import bap_com
+        fp = bap_com.FrontPanel()
+        is_fake_fp = False
+    except Exception as e:
+        print 'Using fake fp'
+        fp = fake_fp()
+        is_fake_fp = True
+
     display('wps')
     scan_res = scan()
     if scan_res == -1:
         display('scan error', True)
+        exit(1)
 
     ssids = get_ssids(scan_res)
     if ssids == -1:
         display('ssid error', True)
+        exit(1)
 
     i = 1
-    of = '/home/pi/websocketserver/scan_results.txt'
     with open(of, 'w') as f:
         for ssid in ssids:
             f.write(ssid + '\n')
             display(ssid + ' - ' + str(i))
+            i+=1
 
     resp = 0
-    magic_ssid = 'xxx' #'bohmeraudio'
+    magic_ssid = 'dont check' #'bohmeraudio'
     if magic_ssid in ssids:
         display('Connecting...')        
         resp = wps_connect(magic_ssid)
@@ -96,10 +138,9 @@ if __name__ == "__main__":
         else:
             display('Connected')
             display('Restarting')
-            os.system('reboot')
+            reboot()
 
     display('Finished')
     display('Start AP')
     time.sleep(1)
-    os.system('halt')
-
+    halt()
